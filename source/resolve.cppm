@@ -3,4 +3,6 @@
 export module resolve;
 
 export import ast;
+export import format;
 export import lexer;
+export import util;

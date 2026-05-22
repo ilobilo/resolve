@@ -1,6 +1,7 @@
 // Copyright (C) 2026  ilobilo
 
 #include <argparse/argparse.hpp>
+#define MAGIC_ENUM_USE_STD_MODULE
 #include <magic_enum/magic_enum.hpp>
 
 import resolve;
@@ -21,10 +22,10 @@ namespace
     {
         subcommand cmd;
         std::vector<input_source> inputs;
-        bool trace;
+        bool trace = false;
         bool ascii;
-        bool dump_clauses;
-        std::size_t limit;
+        bool dump_clauses = false;
+        std::size_t limit = 10000;
     };
 
     std::expected<std::string, std::string> read_file(std::string_view path)
@@ -112,7 +113,7 @@ namespace
         return 0;
     }
 
-    int run_transform(const options &opts, std::string_view name)
+    int run_transform(const options &opts, subcommand cmd)
     {
         return 0;
     }
@@ -130,11 +131,9 @@ namespace
             case prove:
                 return run_prove(opts);
             case nnf:
-                return run_transform(opts, "nnf");
             case cnf:
-                return run_transform(opts, "cnf");
             case dnf:
-                return run_transform(opts, "dnf");
+                return run_transform(opts, opts.cmd);
             case unify:
                 return run_unify(opts);
         }
@@ -201,7 +200,10 @@ int main(int argc, char **argv)
     const bool has_subcommand = args.size() > 1
         && magic_enum::enum_cast<subcommand>(args[1]).has_value();
     if (!has_subcommand && !is_global_flag)
-        args.insert(args.begin() + 1, "prove");
+    {
+        std::cout << program;
+        return 0;
+    }
 
     try {
         program.parse_args(args);
