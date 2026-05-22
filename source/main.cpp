@@ -1,11 +1,14 @@
 // Copyright (C) 2026  ilobilo
 
-#include <argparse/argparse.hpp>
-#define MAGIC_ENUM_USE_STD_MODULE
-#include <magic_enum/magic_enum.hpp>
-
 import resolve;
 import std;
+import std.compat;
+
+#define ARGPARSE_MODULE_USE_STD_MODULE
+#include <argparse/argparse.hpp>
+
+#define MAGIC_ENUM_USE_STD_MODULE
+#include <magic_enum/magic_enum.hpp>
 
 namespace
 {
