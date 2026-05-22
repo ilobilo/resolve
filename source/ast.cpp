@@ -4,12 +4,16 @@ module ast;
 
 namespace resol
 {
+    // produces negation normal form of formula
+    // -> and <-> are eliminated
+    // negations are moved inwards to atoms
     formula::ptr to_nnf(formula::ptr formula)
     {
         return std::visit(overloaded {
             [](const formula::predicate_t &val) -> formula::ptr {
                 return std::make_shared<formula_t>(val);
             },
+            // push the negation inward
             [](const formula::not_t &val) {
                 return to_nnf_neg(val.arg);
             },
@@ -19,9 +23,11 @@ namespace resol
             [](const formula::or_t &val) {
                 return make_or(to_nnf(val.lhs), to_nnf(val.rhs));
             },
+            // A -> B  =  ~A or B
             [](const formula::implies_t &val) {
                 return make_or(to_nnf_neg(val.lhs), to_nnf(val.rhs));
             },
+            // A <-> B  =  (~A or B) and (~B or A)
             [](const formula::iff_t &val) {
                 return make_and(
                     make_or(to_nnf_neg(val.lhs), to_nnf(val.rhs)),
@@ -43,33 +49,42 @@ namespace resol
         }, *formula);
     }
 
+    // produces negation normal form of ~formula
     formula::ptr to_nnf_neg(formula::ptr formula)
     {
         return std::visit(overloaded {
             [](const formula::predicate_t &val) {
                 return make_not(std::make_shared<formula_t>(val));
             },
+            // double negation
             [](const formula::not_t &val) {
                 return to_nnf(val.arg);
             },
+            // de morgan's laws
+            // ~(A and B)  =  ~A or ~B
             [](const formula::and_t &val) {
                 return make_or(to_nnf_neg(val.lhs), to_nnf_neg(val.rhs));
             },
+            // ~(A or B)  =  ~A and ~B
             [](const formula::or_t &val) {
                 return make_and(to_nnf_neg(val.lhs), to_nnf_neg(val.rhs));
             },
+            // ~(A -> B)  =  A and ~B
             [](const formula::implies_t &val) {
                 return make_and(to_nnf(val.lhs), to_nnf_neg(val.rhs));
             },
+            // ~(A <-> B)  =  (A and ~B) or (B and ~A)
             [](const formula::iff_t &val) {
                 return make_or(
                     make_and(to_nnf(val.lhs), to_nnf_neg(val.rhs)),
                     make_and(to_nnf(val.rhs), to_nnf_neg(val.lhs))
                 );
             },
+            // ~forall(p)  =  exists(~p)
             [](const formula::forall_t &val) {
                 return make_exists(val.var, to_nnf_neg(val.body));
             },
+            // ~exists(p)  =  forall(~p)
             [](const formula::exists_t &val) {
                 return make_forall(val.var, to_nnf_neg(val.body));
             },
@@ -82,6 +97,8 @@ namespace resol
         }, *formula);
     }
 
+    // returns true when formula doesn't contain -> or <->
+    // and every negation is applied to a predicate
     bool is_nnf(formula::ptr formula)
     {
         return std::visit(overloaded {
@@ -118,6 +135,7 @@ namespace resol
         }, *formula);
     }
 
+    // checks if two formulas are exactly the same
     bool equal(formula::ptr lhs, formula::ptr rhs)
     {
         if (lhs->index() != rhs->index())
@@ -223,6 +241,7 @@ namespace resol
         }
     } // namespace
 
+    // produces conjunctive normal form of formula
     formula::ptr to_cnf(formula::ptr formula)
     {
         if (!is_nnf(formula))
@@ -249,6 +268,7 @@ namespace resol
 
     namespace
     {
+        // literal is a predicate, negated predicate, T or F
         bool is_literal(formula::ptr formula)
         {
             return std::visit(overloaded {
@@ -270,6 +290,7 @@ namespace resol
             }, *formula);
         }
 
+        // disjunction of literals or one literal
         bool is_clause(formula::ptr formula)
         {
             return std::visit(overloaded {
@@ -305,6 +326,7 @@ namespace resol
     {
         formula::ptr distribute_and(formula::ptr lhs, formula::ptr rhs)
         {
+            // if lhs is (A or B) then return (A and rhs) or (B and rhs)
             if (const auto other = std::get_if<formula::or_t>(lhs.get()))
             {
                 return make_or(
@@ -312,6 +334,7 @@ namespace resol
                     distribute_and(other->rhs, rhs)
                 );
             }
+            // if rhs is (A or B) then return (lhs and A) or (lhs and B)
             if (const auto other = std::get_if<formula::or_t>(rhs.get()))
             {
                 return make_or(
@@ -323,6 +346,7 @@ namespace resol
         }
     } // namespace
 
+    // produces disjunctive normal form of formula
     formula::ptr to_dnf(formula::ptr formula)
     {
         if (!is_nnf(formula))
@@ -349,6 +373,7 @@ namespace resol
 
     namespace
     {
+        // conjunction of literals
         bool is_term(formula::ptr formula)
         {
             return std::visit(overloaded {
