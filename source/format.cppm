@@ -34,14 +34,6 @@ namespace resol
 
     namespace detail
     {
-        using prec_t = int;
-        constexpr prec_t not_p = 5;
-        constexpr prec_t and_p = 4;
-        constexpr prec_t or_p = 3;
-        constexpr prec_t implies_p = 2;
-        constexpr prec_t iff_p = 1;
-        constexpr prec_t quant_p = 1;
-
         void append_term(std::string &out, const term_t &term)
         {
             std::visit(overloaded {
@@ -87,7 +79,7 @@ namespace resol
                         out += '(';
                         for (std::size_t i = 0; i < val.args.size(); i++)
                         {
-                            if (i)
+                            if (i != 0)
                                 out += ", ";
                             append_term(out, *val.args[i]);
                         }
@@ -210,18 +202,21 @@ struct std::formatter<resol::formula_t>
     constexpr auto parse(std::format_parse_context &ctx)
     {
         auto it = ctx.begin();
-        if (it != ctx.end() && *it == 'a')
+        if (it != ctx.end())
         {
-            style = resol::print_style::ascii;
-            it++;
+            if (*it == 'a')
+            {
+                style = resol::print_style::ascii;
+                it++;
+            }
+            else if (*it == 'u')
+            {
+                style = resol::print_style::unicode;
+                it++;
+            }
+            if (*it != '}')
+                throw std::format_error("invalid format spec for formula");
         }
-        else if (it != ctx.end() && *it == 'u')
-        {
-            style = resol::print_style::unicode;
-            it++;
-        }
-        if (it != ctx.end() && *it != '}')
-            throw std::format_error("invalid format spec for formula");
         return it;
     }
 

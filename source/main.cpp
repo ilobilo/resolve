@@ -1,14 +1,12 @@
 // Copyright (C) 2026  ilobilo
 
 import resolve;
+import magic_enum;
 import std;
 import std.compat;
 
 #define ARGPARSE_MODULE_USE_STD_MODULE
 #include <argparse/argparse.hpp>
-
-#define MAGIC_ENUM_USE_STD_MODULE
-#include <magic_enum/magic_enum.hpp>
 
 namespace
 {
@@ -118,6 +116,21 @@ namespace
 
     int run_transform(const options &opts, subcommand cmd)
     {
+        resol::parser parser { opts.inputs[0].text };
+        auto formula = parser.parse_formula();
+        if (!formula)
+        {
+            std::println(
+                std::cerr, "error: {} at {}",
+                formula.error().message, formula.error().pos
+            );
+            return 1;
+        }
+
+        const auto style = opts.ascii
+            ? resol::print_style::ascii
+            : resol::print_style::unicode;
+        std::println("{}", to_string(to_nnf(*formula), style));
         return 0;
     }
 

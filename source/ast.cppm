@@ -7,6 +7,14 @@ import std;
 
 export namespace resol
 {
+    using prec_t = int;
+    constexpr prec_t not_p = 5;
+    constexpr prec_t and_p = 4;
+    constexpr prec_t or_p = 3;
+    constexpr prec_t implies_p = 2;
+    constexpr prec_t iff_p = 1;
+    constexpr prec_t quant_p = 1;
+
     struct term_t;
     namespace term
     {
