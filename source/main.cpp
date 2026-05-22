@@ -127,10 +127,21 @@ namespace
             return 1;
         }
 
+        formula = resol::to_nnf(*formula);
+        if (cmd == subcommand::cnf)
+            formula = resol::to_cnf(*formula);
+        else if (cmd == subcommand::dnf)
+            formula = resol::to_dnf(*formula);
+        else
+        {
+            std::println(std::cerr, "error: invalid subcommand");
+            return 1;
+        }
+
         const auto style = opts.ascii
             ? resol::print_style::ascii
             : resol::print_style::unicode;
-        std::println("{}", to_string(to_nnf(*formula), style));
+        std::println("{}", to_string(*formula, style));
         return 0;
     }
 

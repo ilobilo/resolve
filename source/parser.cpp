@@ -251,7 +251,7 @@ namespace resol
             }
         }
 
-        auto ts = expect(token_type::turnstile);
+        const auto ts = expect(token_type::turnstile);
         if (!ts)
             return std::unexpected { ts.error() };
 
