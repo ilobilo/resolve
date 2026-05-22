@@ -132,7 +132,7 @@ namespace
             formula = resol::to_cnf(*formula);
         else if (cmd == subcommand::dnf)
             formula = resol::to_dnf(*formula);
-        else
+        else if (cmd != subcommand::nnf)
         {
             std::println(std::cerr, "error: invalid subcommand");
             return 1;
