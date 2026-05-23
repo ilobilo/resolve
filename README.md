@@ -57,6 +57,15 @@ $ resolve nnf -a -e "¬forall x. P(x)"
 exists x. ~P(x)
 ```
 
+### Simplification
+```sh
+$ resolve simplify -e "∀x. P(x) ∨ ¬P(x)"
+∀x. ⊤
+
+$ resolve simplify -e "(p ∨ ¬q ∨ (p ∨ ¬q)) ∧ (¬p ∧ q ∨ ¬p ∧ q)"
+(p ∨ ¬q) ∧ (¬p ∧ q)
+```
+
 ### Unification
 `unify` takes two formulas and prints the most general unifier as `var -> term`.
 
