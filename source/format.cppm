@@ -2,38 +2,39 @@
 
 export module format;
 
+import clause;
 import util;
 import ast;
 import std;
 
 namespace resol
 {
-    struct symbols
+    namespace
     {
-        std::string_view neg, conj, disj, impl, iff;
-        std::string_view forall, exists;
-        std::string_view top, bot;
-        std::string_view qdot;
-    };
+        struct symbols
+        {
+            std::string_view neg, conj, disj, impl, iff;
+            std::string_view forall, exists;
+            std::string_view top, bot;
+            std::string_view qdot;
+        };
 
-    constexpr symbols symbols_unicode {
-        .neg = "¬", .conj = " ∧ ", .disj = " ∨ ",
-        .impl = " → ", .iff = " ↔ ",
-        .forall = "∀", .exists = "∃",
-        .top = "⊤", .bot = "⊥",
-        .qdot = ". "
-    };
+        constexpr symbols symbols_unicode {
+            .neg = "¬", .conj = " ∧ ", .disj = " ∨ ",
+            .impl = " → ", .iff = " ↔ ",
+            .forall = "∀", .exists = "∃",
+            .top = "⊤", .bot = "⊥",
+            .qdot = ". "
+        };
 
-    constexpr symbols symbols_ascii {
-        .neg = "~", .conj = " & ", .disj = " | ",
-        .impl = " -> ", .iff = " <-> ",
-        .forall = "forall ", .exists = "exists ",
-        .top = "true", .bot = "false",
-        .qdot = ". "
-    };
+        constexpr symbols symbols_ascii {
+            .neg = "~", .conj = " & ", .disj = " | ",
+            .impl = " -> ", .iff = " <-> ",
+            .forall = "forall ", .exists = "exists ",
+            .top = "true", .bot = "false",
+            .qdot = ". "
+        };
 
-    namespace detail
-    {
         void append_term(std::string &out, const term_t &term)
         {
             std::visit(overloaded {
@@ -144,84 +145,62 @@ namespace resol
                 }
             }, formula);
         }
-    } // namespace detail
+    } // namespace
 } // namespace resol
 
 export namespace resol
 {
     enum class print_style { unicode, ascii };
 
-    std::string to_string(const term_t &term)
-    {
-        std::string out;
-        detail::append_term(out, term);
-        return out;
-    }
-
     std::string to_string(term::ptr term)
     {
-        return to_string(*term);
-    }
-
-    std::string to_string(const formula_t &formula, print_style style = print_style::unicode)
-    {
         std::string out;
-        const auto &symbols = (style == print_style::ascii) ? symbols_ascii : symbols_unicode;
-        detail::append_formula(out, formula, 0, symbols);
+        append_term(out, *term);
         return out;
     }
 
     std::string to_string(formula::ptr formula, print_style style = print_style::unicode)
     {
-        return to_string(*formula, style);
+        std::string out;
+        const auto &symbols = (style == print_style::ascii) ? symbols_ascii : symbols_unicode;
+        append_formula(out, *formula, 0, symbols);
+        return out;
+    }
+
+    std::string to_string(const literal &lit, print_style style = print_style::unicode)
+    {
+        std::string out;
+        if (lit.negated)
+            out += (style == print_style::ascii ? "~" : "¬");
+
+        out += lit.name;
+        if (!lit.args.empty())
+        {
+            out += '(';
+            for (std::size_t i = 0; i < lit.args.size(); i++)
+            {
+                if (i != 0)
+                    out += ", ";
+                out += to_string(lit.args[i]);
+            }
+            out += ')';
+        }
+        return out;
+    }
+
+    std::string to_string(const clause &cl, print_style style = print_style::unicode)
+    {
+        if (cl.empty())
+            return style == print_style::ascii ? "false" : "⊥";
+
+        const auto sep = (style == print_style::ascii ? " | " : " ∨ ");
+        std::string out;
+        for (std::size_t i = 0; i < cl.size(); i++)
+        {
+            if (i != 0)
+                out += sep;
+            out += to_string(cl[i], style);
+        }
+        return out;
     }
 } // export namespace resol
-
-template<>
-struct std::formatter<resol::term_t>
-{
-    constexpr auto parse(std::format_parse_context &ctx)
-    {
-        auto it = ctx.begin();
-        if (it != ctx.end() && *it != '}')
-            throw std::format_error("term formatter takes no format spec");
-        return it;
-    }
-
-    auto format(const resol::term_t &term, std::format_context &ctx) const
-    {
-        return std::format_to(ctx.out(), "{}", resol::to_string(term));
-    }
-};
-
-template<>
-struct std::formatter<resol::formula_t>
-{
-    resol::print_style style = resol::print_style::unicode;
-
-    constexpr auto parse(std::format_parse_context &ctx)
-    {
-        auto it = ctx.begin();
-        if (it != ctx.end())
-        {
-            if (*it == 'a')
-            {
-                style = resol::print_style::ascii;
-                it++;
-            }
-            else if (*it == 'u')
-            {
-                style = resol::print_style::unicode;
-                it++;
-            }
-            if (*it != '}')
-                throw std::format_error("invalid format spec for formula");
-        }
-        return it;
-    }
-
-    auto format(const resol::formula_t &formula, std::format_context &ctx) const
-    {
-        return std::format_to(ctx.out(), "{}", resol::to_string(formula, style));
-    }
-};

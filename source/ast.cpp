@@ -6,6 +6,57 @@ import unify;
 
 namespace resol
 {
+    namespace
+    {
+        // produces negation normal form of ~formula
+        formula::ptr to_nnf_neg(formula::ptr formula)
+        {
+            return std::visit(overloaded {
+                [](const formula::predicate_t &val) {
+                    return make_not(std::make_shared<formula_t>(val));
+                },
+                // double negation
+                [](const formula::not_t &val) {
+                    return to_nnf(val.arg);
+                },
+                // de morgan's laws
+                // ~(A and B)  =  ~A or ~B
+                [](const formula::and_t &val) {
+                    return make_or(to_nnf_neg(val.lhs), to_nnf_neg(val.rhs));
+                },
+                // ~(A or B)  =  ~A and ~B
+                [](const formula::or_t &val) {
+                    return make_and(to_nnf_neg(val.lhs), to_nnf_neg(val.rhs));
+                },
+                // ~(A -> B)  =  A and ~B
+                [](const formula::implies_t &val) {
+                    return make_and(to_nnf(val.lhs), to_nnf_neg(val.rhs));
+                },
+                // ~(A <-> B)  =  (A and ~B) or (B and ~A)
+                [](const formula::iff_t &val) {
+                    return make_or(
+                        make_and(to_nnf(val.lhs), to_nnf_neg(val.rhs)),
+                        make_and(to_nnf(val.rhs), to_nnf_neg(val.lhs))
+                    );
+                },
+                // ~forall(p)  =  exists(~p)
+                [](const formula::forall_t &val) {
+                    return make_exists(val.var, to_nnf_neg(val.body));
+                },
+                // ~exists(p)  =  forall(~p)
+                [](const formula::exists_t &val) {
+                    return make_forall(val.var, to_nnf_neg(val.body));
+                },
+                [](const formula::true_t &) {
+                    return make_false();
+                },
+                [](const formula::false_t &) {
+                    return make_true();
+                }
+            }, *formula);
+        }
+    } // namespace
+
     // produces negation normal form of formula
     // -> and <-> are eliminated
     // negations are moved inwards to atoms
@@ -51,92 +102,6 @@ namespace resol
         }, *formula);
     }
 
-    // produces negation normal form of ~formula
-    formula::ptr to_nnf_neg(formula::ptr formula)
-    {
-        return std::visit(overloaded {
-            [](const formula::predicate_t &val) {
-                return make_not(std::make_shared<formula_t>(val));
-            },
-            // double negation
-            [](const formula::not_t &val) {
-                return to_nnf(val.arg);
-            },
-            // de morgan's laws
-            // ~(A and B)  =  ~A or ~B
-            [](const formula::and_t &val) {
-                return make_or(to_nnf_neg(val.lhs), to_nnf_neg(val.rhs));
-            },
-            // ~(A or B)  =  ~A and ~B
-            [](const formula::or_t &val) {
-                return make_and(to_nnf_neg(val.lhs), to_nnf_neg(val.rhs));
-            },
-            // ~(A -> B)  =  A and ~B
-            [](const formula::implies_t &val) {
-                return make_and(to_nnf(val.lhs), to_nnf_neg(val.rhs));
-            },
-            // ~(A <-> B)  =  (A and ~B) or (B and ~A)
-            [](const formula::iff_t &val) {
-                return make_or(
-                    make_and(to_nnf(val.lhs), to_nnf_neg(val.rhs)),
-                    make_and(to_nnf(val.rhs), to_nnf_neg(val.lhs))
-                );
-            },
-            // ~forall(p)  =  exists(~p)
-            [](const formula::forall_t &val) {
-                return make_exists(val.var, to_nnf_neg(val.body));
-            },
-            // ~exists(p)  =  forall(~p)
-            [](const formula::exists_t &val) {
-                return make_forall(val.var, to_nnf_neg(val.body));
-            },
-            [](const formula::true_t &) {
-                return make_false();
-            },
-            [](const formula::false_t &) {
-                return make_true();
-            }
-        }, *formula);
-    }
-
-    // returns true when formula doesn't contain -> or <->
-    // and every negation is applied to a predicate
-    bool is_nnf(formula::ptr formula)
-    {
-        return std::visit(overloaded {
-            [](const formula::predicate_t &val) {
-                return true;
-            },
-            [](const formula::not_t &val) {
-                return std::holds_alternative<formula::predicate_t>(*val.arg);
-            },
-            [](const formula::and_t &val) {
-                return is_nnf(val.lhs) && is_nnf(val.rhs);
-            },
-            [](const formula::or_t &val) {
-                return is_nnf(val.lhs) && is_nnf(val.rhs);
-            },
-            [](const formula::implies_t &val) {
-                return false;
-            },
-            [](const formula::iff_t &val) {
-                return false;
-            },
-            [](const formula::forall_t &val) {
-                return is_nnf(val.body);
-            },
-            [](const formula::exists_t &val) {
-                return is_nnf(val.body);
-            },
-            [](const formula::true_t &) {
-                return true;
-            },
-            [](const formula::false_t &) {
-                return true;
-            }
-        }, *formula);
-    }
-
     // checks if two formulas are exactly the same
     bool equal(formula::ptr lhs, formula::ptr rhs)
     {
@@ -148,9 +113,9 @@ namespace resol
                 const auto &other = std::get<formula::predicate_t>(*rhs);
                 if (val.name != other.name || val.args.size() != other.args.size())
                     return false;
-                for (const auto &[lhs, rhs] : std::views::zip(val.args, other.args))
+                for (const auto &[a, b] : std::views::zip(val.args, other.args))
                 {
-                    if (!equal(lhs, rhs))
+                    if (!equal(a, b))
                         return false;
                 }
                 return true;
@@ -198,20 +163,18 @@ namespace resol
 
         return std::visit(overloaded {
             [&rhs](const term::variable_t &val) {
-                const auto &other = std::get<term::variable_t>(*rhs);
-                return val.name == other.name;
+                return val.name == std::get<term::variable_t>(*rhs).name;
             },
             [&rhs](const term::constant_t &val) {
-                const auto &other = std::get<term::constant_t>(*rhs);
-                return val.name == other.name;
+                return val.name == std::get<term::constant_t>(*rhs).name;
             },
             [&rhs](const term::function_t &val) {
                 const auto &other = std::get<term::function_t>(*rhs);
                 if (val.name != other.name || val.args.size() != other.args.size())
                     return false;
-                for (const auto &[lhs, rhs] : std::views::zip(val.args, other.args))
+                for (const auto &[a, b] : std::views::zip(val.args, other.args))
                 {
-                    if (!equal(lhs, rhs))
+                    if (!equal(a, b))
                         return false;
                 }
                 return true;
@@ -268,62 +231,6 @@ namespace resol
 
     namespace
     {
-        // literal is a predicate, negated predicate, T or F
-        bool is_literal(formula::ptr formula)
-        {
-            return std::visit(overloaded {
-                [](const formula::predicate_t &) {
-                    return true;
-                },
-                [](const formula::not_t &val) {
-                    return std::holds_alternative<formula::predicate_t>(*val.arg);
-                },
-                [](const formula::true_t &) {
-                    return true;
-                },
-                [](const formula::false_t &) {
-                    return true;
-                },
-                [](const auto &) {
-                    return false;
-                }
-            }, *formula);
-        }
-
-        // disjunction of literals or one literal
-        bool is_clause(formula::ptr formula)
-        {
-            return std::visit(overloaded {
-                [](const formula::or_t &val) {
-                    return is_clause(val.lhs) && is_clause(val.rhs);
-                },
-                [&formula](const auto &) {
-                    return is_literal(formula);
-                }
-            }, *formula);
-        }
-    } // namespace
-
-    bool is_cnf(formula::ptr formula)
-    {
-        return std::visit(overloaded {
-            [](const formula::and_t &val) {
-                return is_cnf(val.lhs) && is_cnf(val.rhs);
-            },
-            [](const formula::forall_t &val) {
-                return is_cnf(val.body);
-            },
-            [](const formula::exists_t &val) {
-                return is_cnf(val.body);
-            },
-            [&formula](const auto &) {
-                return is_clause(formula);
-            },
-        }, *formula);
-    }
-
-    namespace
-    {
         formula::ptr distribute_and(formula::ptr lhs, formula::ptr rhs)
         {
             // if lhs is (A or B) then return (A and rhs) or (B and rhs)
@@ -365,41 +272,7 @@ namespace resol
             },
             [&formula](const auto &) {
                 return formula;
-            },
-        }, *formula);
-    }
-
-    namespace
-    {
-        // conjunction of literals
-        bool is_term(formula::ptr formula)
-        {
-            return std::visit(overloaded {
-                [](const formula::and_t &val) {
-                    return is_term(val.lhs) && is_term(val.rhs);
-                },
-                [&formula](const auto &) {
-                    return is_literal(formula);
-                },
-            }, *formula);
-        }
-    } // namespace
-
-    bool is_dnf(formula::ptr formula)
-    {
-        return std::visit(overloaded {
-            [](const formula::or_t &val) {
-                return is_dnf(val.lhs) && is_dnf(val.rhs);
-            },
-            [](const formula::forall_t &val) {
-                return is_dnf(val.body);
-            },
-            [](const formula::exists_t &val) {
-                return is_dnf(val.body);
-            },
-            [&formula](const auto &) {
-                return is_term(formula);
-            },
+            }
         }, *formula);
     }
 
@@ -655,33 +528,10 @@ namespace resol
 
     namespace
     {
-        using term_map = std::unordered_map<std::string, term::ptr>;
-
-        term::ptr subst_term(const term_map &sub, term::ptr term)
-        {
-            return std::visit(overloaded {
-                [&](const term::variable_t &val) -> term::ptr {
-                    if (const auto it = sub.find(val.name); it != sub.end())
-                        return it->second;
-                    return term;
-                },
-                [&](const term::constant_t &) {
-                    return term;
-                },
-                [&](const term::function_t &val) {
-                    std::vector<term::ptr> args;
-                    args.reserve(val.args.size());
-                    for (const auto &arg : val.args)
-                        args.push_back(subst_term(sub, arg));
-                    return make_func(val.name, std::move(args));
-                }
-            }, *term);
-        }
-
         formula::ptr skolemise_impl(
             formula::ptr formula,
             std::vector<std::string> &universals,
-            term_map &sub,
+            substitution &sub,
             std::size_t &counter
         )
         {
@@ -690,7 +540,7 @@ namespace resol
                     std::vector<term::ptr> args;
                     args.reserve(val.args.size());
                     for (const auto &arg : val.args)
-                        args.push_back(subst_term(sub, arg));
+                        args.push_back(resol::apply(sub, arg));
                     return make_pred(val.name, std::move(args));
                 },
                 [&](const formula::not_t &val) {
@@ -725,7 +575,11 @@ namespace resol
                 [&](const formula::exists_t &val) {
                     const auto name = std::format("sk_{}", counter++);
                     term::ptr skolem;
-                    if (!universals.empty())
+                    if (universals.empty())
+                    {
+                        skolem = make_const(name);
+                    }
+                    else
                     {
                         std::vector<term::ptr> args;
                         args.reserve(universals.size());
@@ -733,7 +587,6 @@ namespace resol
                             args.push_back(make_var(u));
                         skolem = make_func(name, std::move(args));
                     }
-                    else skolem = make_const(name);
 
                     std::optional<term::ptr> saved;
                     if (const auto it = sub.find(val.var); it != sub.end())
@@ -762,7 +615,7 @@ namespace resol
     formula::ptr skolemise(formula::ptr formula)
     {
         std::vector<std::string> universals;
-        term_map sub;
+        substitution sub;
         std::size_t counter = 0;
         return skolemise_impl(std::move(formula), universals, sub, counter);
     }

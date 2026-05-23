@@ -1,5 +1,5 @@
 # resolve
-First-order logic resolution prover. Uni CS project (wip)
+First-order logic resolution prover. Uni CS project
 
 ## License: [EUPL v1.2](LICENSE)
 
@@ -43,6 +43,7 @@ In order of precedence:
 $ resolve simplify -e "∀x. P(x) ∨ ¬P(x)"
 ∀x. ⊤
 
+# ⊥
 $ resolve simplify -e "(p ∨ ¬q ∨ (p ∨ ¬q)) ∧ (¬p ∧ q ∨ ¬p ∧ q)"
 (p ∨ ¬q) ∧ (¬p ∧ q)
 ```
@@ -58,7 +59,7 @@ $ resolve nnf -e "P ↔ ¬Q"
 $ echo "(P ∧ Q) ∨ R" | resolve cnf
 (P ∨ R) ∧ (Q ∨ R)
 
-$ echo "(P ∨ Q) ∧ R" > tmp.txt && resolve dnf tmp.txt && rm tmp.txt
+$ resolve dnf -e "(P ∨ Q) ∧ R"
 P ∧ R ∨ Q ∧ R
 
 $ resolve nnf -a -e "¬forall x. P(x)"
@@ -66,7 +67,7 @@ exists x. ~P(x)
 ```
 
 ### skolemise
-`skolemise` normalises every bound variable (renames `x` to `x_N`) and replaces each existentially quantified variable (`∃x.`) with a Skolem term.
+`skolemise` normalises every bound variable (renames `x` to `x_N`) and replaces each existentially quantified variable (`∃x.`) with a skolem term (`sk_N`).
 
 ```sh
 $ resolve skolemise -e "∀x. ∃y. P(x, y)"
@@ -83,8 +84,6 @@ $ resolve skolemise -e "P → ∃y. Q(y)"
 ```
 
 ### prove
-`prove` runs resolution with factoring on the extracted clause set. output is `unsatisfiable`, `satisfiable` or `limit reached`.
-
 ```sh
 $ resolve prove -e "(P → Q) ∧ P ∧ ¬Q"
 unsatisfiable
@@ -108,7 +107,7 @@ $ resolve prove -t -e "(∀x. P(x) → Q(x)) ∧ P(a) ∧ ¬Q(a)"
 unsatisfiable
 ```
 
-`prove --clauses` applies following to formula: nnf -> normalise (explained above) -> skolemise (same) -> drop ∀ (forall) → cnf, and prints one clause per line.
+`prove --clauses` does: nnf -> normalise (explained above) -> skolemise (same) -> remove every ∀ (forall) → cnf, and prints resulting clauses.
 
 ```sh
 $ resolve prove --clauses -e "∀x. P(x) → Q(x)"

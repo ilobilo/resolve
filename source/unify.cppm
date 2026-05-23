@@ -15,7 +15,6 @@ export namespace resol
     using unify_result = std::expected<Type, unify_error>;
 
     term::ptr apply(const substitution &sub, term::ptr term);
-    formula::ptr apply(const substitution &sub, formula::ptr formula);
 
     unify_result<substitution> unify(term::ptr lhs, term::ptr rhs);
     unify_result<substitution> unify(formula::ptr lhs, formula::ptr rhs);

@@ -19,12 +19,9 @@ namespace resol
                     return false;
                 },
                 [var](const term::function_t &val) {
-                    for (const auto &arg : val.args)
-                    {
-                        if (occurs(var, arg))
-                            return true;
-                    }
-                    return false;
+                    return std::ranges::any_of(val.args, [var](const auto &arg) {
+                        return occurs(var, arg);
+                    });
                 }
             }, *term);
         }
@@ -32,20 +29,16 @@ namespace resol
         // bind { var -> term } into sub
         unify_result<void> bind(substitution &sub, std::string var, term::ptr term)
         {
-            // x := x
-            if (const auto other = std::get_if<term::variable_t>(term.get()))
-            {
-                if (other->name == var)
-                    return { };
-            }
+            // x := x is no-op
+            const auto other = std::get_if<term::variable_t>(term.get());
+            if (other && other->name == var)
+                return { };
 
             if (occurs(var, term))
             {
-                return std::unexpected {
-                    unify_error {
-                        std::format("occurs check failed: {} appears in its own binding", var)
-                    }
-                };
+                return std::unexpected { unify_error {
+                    std::format("occurs check failed: {} appears in its own binding", var)
+                } };
             }
 
             // apply { var -> term } to every existing value
@@ -132,50 +125,6 @@ namespace resol
                 return make_func(val.name, std::move(args));
             }
         }, *term);
-    }
-
-    formula::ptr apply(const substitution &sub, formula::ptr formula)
-    {
-        return std::visit(overloaded {
-            [&](const formula::predicate_t &val) {
-                std::vector<term::ptr> args;
-                args.reserve(val.args.size());
-                for (const auto &arg : val.args)
-                    args.push_back(resol::apply(sub, arg));
-                return make_pred(val.name, std::move(args));
-            },
-            [&](const formula::not_t &val) {
-                return make_not(resol::apply(sub, val.arg));
-            },
-            [&](const formula::and_t &val) {
-                return make_and(resol::apply(sub, val.lhs), resol::apply(sub, val.rhs));
-            },
-            [&](const formula::or_t &val) {
-                return make_or(resol::apply(sub, val.lhs), resol::apply(sub, val.rhs));
-            },
-            [&](const formula::implies_t &val) {
-                return make_implies(resol::apply(sub, val.lhs), resol::apply(sub, val.rhs));
-            },
-            [&](const formula::iff_t &val) {
-                return make_iff(resol::apply(sub, val.lhs), resol::apply(sub, val.rhs));
-            },
-            [&](const formula::forall_t &val) {
-                auto inner = sub;
-                inner.erase(val.var);
-                return make_forall(val.var, resol::apply(inner, val.body));
-            },
-            [&](const formula::exists_t &val) {
-                auto inner = sub;
-                inner.erase(val.var);
-                return make_exists(val.var, resol::apply(inner, val.body));
-            },
-            [](const formula::true_t &) {
-                return make_true();
-            },
-            [](const formula::false_t &) {
-                return make_false();
-            }
-        }, *formula);
     }
 
     unify_result<substitution> unify(term::ptr lhs, term::ptr rhs)

@@ -6,26 +6,9 @@ import util;
 
 namespace resol
 {
-    literal apply(const substitution &sub, const literal &lit)
-    {
-        std::vector<term::ptr> args;
-        args.reserve(lit.args.size());
-        for (const auto &arg : lit.args)
-            args.push_back(resol::apply(sub, arg));
-        return { lit.negated, lit.name, std::move(args) };
-    }
-
-    clause apply(const substitution &sub, const clause &cl)
-    {
-        clause out;
-        out.reserve(cl.size());
-        for (const auto &lit : cl)
-            out.push_back(resol::apply(sub, lit));
-        return out;
-    }
-
     namespace
     {
+        // renames every variable to <name>#<tag>
         term::ptr rename_term(std::string_view tag, term::ptr term)
         {
             return std::visit(overloaded {
@@ -44,27 +27,25 @@ namespace resol
                 }
             }, *term);
         }
-    } // namespace
 
-    clause rename_apart(const clause &cl, std::size_t tag)
-    {
-        const auto tag_str = std::to_string(tag);
-        clause out;
-        out.reserve(cl.size());
-        for (const auto &lit : cl)
+        // copy cl with every variable renamed (see above)
+        clause rename_apart(const clause &cl, std::size_t tag)
         {
-            std::vector<term::ptr> args;
-            args.reserve(lit.args.size());
-            for (const auto &arg : lit.args)
-                args.push_back(rename_term(tag_str, arg));
-            out.push_back({ lit.negated, lit.name, std::move(args) });
+            const auto tag_str = std::to_string(tag);
+            clause out;
+            out.reserve(cl.size());
+            for (const auto &lit : cl)
+            {
+                std::vector<term::ptr> args;
+                args.reserve(lit.args.size());
+                for (const auto &arg : lit.args)
+                    args.push_back(rename_term(tag_str, arg));
+                out.push_back({ lit.negated, lit.name, std::move(args) });
+            }
+            return out;
         }
-        return out;
-    }
 
-    namespace
-    {
-        // remove duplicate literals from clause in-place
+        // removes duplicate literals from cl
         void factor(clause &cl)
         {
             for (std::size_t i = 0; i < cl.size(); i++)
@@ -80,33 +61,7 @@ namespace resol
             }
         }
 
-        bool is_tautology(const clause &cl)
-        {
-            for (std::size_t i = 0; i < cl.size(); i++)
-            {
-                for (std::size_t j = i + 1; j < cl.size(); j++)
-                {
-                    if (cl[i].negated == cl[j].negated)
-                        continue;
-                    if (cl[i].name != cl[j].name || cl[i].args.size() != cl[j].args.size())
-                        continue;
-
-                    bool match = true;
-                    for (const auto &[left, right] : std::views::zip(cl[i].args, cl[j].args))
-                    {
-                        if (!equal(left, right))
-                        {
-                            match = false;
-                            break;
-                        }
-                    }
-                    if (match)
-                        return true;
-                }
-            }
-            return false;
-        }
-
+        // extends sub so that p[sub] is equal to q
         bool match_term(term::ptr p, term::ptr q, substitution &sub)
         {
             return std::visit(overloaded {
@@ -163,24 +118,32 @@ namespace resol
             }
             return false;
         }
-    } // namespace
 
-    bool subsumes(const clause &c, const clause &d)
-    {
-        if (c.size() > d.size())
-            return false;
-        substitution sub;
-        return subsumes_aux(c, 0, d, sub);
-    }
+        bool subsumes(const clause &c, const clause &d)
+        {
+            if (c.size() > d.size())
+                return false;
+            substitution sub;
+            return subsumes_aux(c, 0, d, sub);
+        }
 
-    namespace
-    {
+        // applies sub to every term inside a literal
+        literal apply_(const substitution &sub, const literal &lit)
+        {
+            std::vector<term::ptr> args;
+            args.reserve(lit.args.size());
+            for (const auto &arg : lit.args)
+                args.push_back(resol::apply(sub, arg));
+            return { lit.negated, lit.name, std::move(args) };
+        }
+
         std::optional<std::pair<substitution, clause>> try_resolve(
             const clause &lhs, const clause &rhs, std::size_t li, std::size_t rj
         )
         {
             const auto &a = lhs[li];
             const auto &b = rhs[rj];
+
             if (a.negated == b.negated)
                 return std::nullopt;
             if (a.name != b.name || a.args.size() != b.args.size())
@@ -188,21 +151,23 @@ namespace resol
 
             auto pa = make_pred(a.name, a.args);
             auto pb = make_pred(b.name, b.args);
+
             auto sub = unify(pa, pb);
             if (!sub)
                 return std::nullopt;
 
             clause result;
             result.reserve(lhs.size() + rhs.size() - 2);
-            for (std::size_t k = 0; k < lhs.size(); k++)
+            for (std::size_t i = 0; i < lhs.size(); i++)
             {
-                if (k != li)
-                    result.push_back(resol::apply(*sub, lhs[k]));
+                if (i != li)
+                    result.push_back(apply_(*sub, lhs[i]));
             }
-            for (std::size_t k = 0; k < rhs.size(); k++)
+
+            for (std::size_t i = 0; i < rhs.size(); i++)
             {
-                if (k != rj)
-                    result.push_back(resol::apply(*sub, rhs[k]));
+                if (i != rj)
+                    result.push_back(apply_(*sub, rhs[i]));
             }
 
             factor(result);
@@ -222,8 +187,8 @@ namespace resol
         for (auto &cl : inputs)
         {
             const bool empty = cl.empty();
-            const std::size_t idx = result.steps.size();
-            result.steps.push_back({ {}, {}, std::move(cl) });
+            const auto idx = result.steps.size();
+            result.steps.push_back({ { }, { }, std::move(cl) });
             if (empty)
             {
                 result.status = prove_status::unsatisfiable;
@@ -244,30 +209,31 @@ namespace resol
             }
             result.iterations++;
 
+            // pick the shortest clause
             const auto best = std::ranges::min_element(usable, { }, [&](std::size_t i) {
                 return result.steps[i].result.size();
             });
-            const std::size_t given_idx = *best;
+            const auto idx = *best;
             usable.erase(best);
 
-            const clause given_cl = result.steps[given_idx].result;
-            for (const std::size_t other_idx : processed)
+            const auto cl = result.steps[idx].result;
+            for (const auto other_idx : processed)
             {
                 const auto renamed = rename_apart(result.steps[other_idx].result, rename_counter++);
 
-                for (std::size_t i = 0; i < given_cl.size(); i++)
+                for (std::size_t i = 0; i < cl.size(); i++)
                 {
                     for (std::size_t j = 0; j < renamed.size(); j++)
                     {
-                        auto r = try_resolve(given_cl, renamed, i, j);
-                        if (!r)
+                        auto res = try_resolve(cl, renamed, i, j);
+                        if (!res)
                             continue;
-                        auto &[mgu, resolvent] = *r;
+                        auto &[mgu, resolvent] = *res;
 
                         if (resolvent.empty())
                         {
                             result.steps.push_back({
-                                { given_idx, other_idx }, std::move(mgu), {}
+                                { idx, other_idx }, std::move(mgu), { }
                             });
                             result.status = prove_status::unsatisfiable;
                             return result;
@@ -276,28 +242,21 @@ namespace resol
                         if (is_tautology(resolvent))
                             continue;
 
-                        bool subsumed = false;
-                        for (const auto &step : result.steps)
-                        {
-                            if (subsumes(step.result, resolvent))
-                            {
-                                subsumed = true;
-                                break;
-                            }
-                        }
-                        if (subsumed)
+                        if (std::ranges::any_of(result.steps, [&](const auto &step) {
+                                return subsumes(step.result, resolvent);
+                            }))
                             continue;
 
-                        const std::size_t new_idx = result.steps.size();
+                        const auto new_idx = result.steps.size();
                         result.steps.push_back({
-                            { given_idx, other_idx }, std::move(mgu), std::move(resolvent)
+                            { idx, other_idx }, std::move(mgu), std::move(resolvent)
                         });
                         usable.push_back(new_idx);
                     }
                 }
             }
 
-            processed.push_back(given_idx);
+            processed.push_back(idx);
         }
 
         return result;

@@ -110,21 +110,13 @@ export namespace resol
     formula::ptr make_true() { return std::make_shared<formula_t>(formula::true_t { }); }
     formula::ptr make_false() { return std::make_shared<formula_t>(formula::false_t { }); }
 
-    formula::ptr to_nnf(formula::ptr formula);
-    formula::ptr to_nnf_neg(formula::ptr formula);
-    bool is_nnf(formula::ptr formula);
-
     bool equal(term::ptr lhs, term::ptr rhs);
     bool equal(formula::ptr lhs, formula::ptr rhs);
 
+    formula::ptr to_nnf(formula::ptr formula);
     formula::ptr to_cnf(formula::ptr formula);
-    bool is_cnf(formula::ptr formula);
-
     formula::ptr to_dnf(formula::ptr formula);
-    bool is_dnf(formula::ptr formula);
-
     formula::ptr simplify(formula::ptr formula);
-
     formula::ptr normalise_apart(formula::ptr formula);
     formula::ptr skolemise(formula::ptr formula);
     formula::ptr drop_universals(formula::ptr formula);

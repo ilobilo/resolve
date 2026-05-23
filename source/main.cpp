@@ -22,20 +22,10 @@ namespace
         subcommand cmd;
         std::vector<input_source> inputs;
         bool trace = false;
-        bool ascii;
+        bool ascii = false;
         bool dump_clauses = false;
         std::size_t limit = 10000;
     };
-
-    std::expected<std::string, std::string> read_file(std::string_view path)
-    {
-        std::ifstream file { std::string { path } };
-        if (!file)
-            return std::unexpected { std::format("cannot open '{}'", path) };
-        std::ostringstream out;
-        out << file.rdbuf();
-        return std::move(out).str();
-    }
 
     std::string read_stdin()
     {
@@ -80,14 +70,6 @@ namespace
 
         for (const auto &expr : sub.get<std::vector<std::string>>("--expr"))
             opts.inputs.push_back({ expr, "<expr>" });
-
-        for (const auto &path : sub.get<std::vector<std::string>>("files"))
-        {
-            auto content = read_file(path);
-            if (!content)
-                return std::unexpected { std::move(content).error() };
-            opts.inputs.push_back({ std::move(*content), path });
-        }
 
         if (cmd == subcommand::prove)
         {
@@ -295,8 +277,7 @@ namespace
                 formula = resol::skolemise(resol::normalise_apart(formula));
                 break;
             default:
-                std::println(std::cerr, "error: invalid subcommand");
-                return 1;
+                std::unreachable();
         }
 
         std::println("{}", to_string(formula, style_for(opts)));
@@ -382,17 +363,11 @@ int main(int argc, char **argv)
             .append()
             .default_value<std::vector<std::string>>({ })
             .metavar("EXPR")
-            .help("read input from EXPR");
+            .help("read input from EXPR (defaults to stdin)");
 
         parser->add_argument("-a", "--ascii")
             .flag()
             .help("emit ASCII characters (~, &, |, ->) instead of Unicode");
-
-        parser->add_argument("files")
-            .nargs(argparse::nargs_pattern::any)
-            .default_value<std::vector<std::string>>({ })
-            .metavar("FILE")
-            .help("input file(s) or use stdin if -e is not specified");
 
         if (value == subcommand::prove)
         {

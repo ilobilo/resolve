@@ -31,10 +31,4 @@ export namespace resol
     };
 
     prove_result run_resolution(clause_set inputs, std::size_t limit);
-
-    literal apply(const substitution &sub, const literal &lit);
-    clause apply(const substitution &sub, const clause &cl);
-
-    clause rename_apart(const clause &cl, std::size_t tag);
-    bool subsumes(const clause &c, const clause &d);
 } // export namespace resol

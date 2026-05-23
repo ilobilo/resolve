@@ -8,7 +8,19 @@ namespace resol
 {
     namespace
     {
-        // returns false if the formula isn't a valid clause body
+        bool same_atom(const literal &lhs, const literal &rhs)
+        {
+            if (lhs.name != rhs.name || lhs.args.size() != rhs.args.size())
+                return false;
+            for (const auto &[a, b] : std::views::zip(lhs.args, rhs.args))
+            {
+                if (!equal(a, b))
+                    return false;
+            }
+            return true;
+        }
+
+        // returns false if literal body is not a clause
         bool collect_disj(formula::ptr formula, clause &out, bool &tautology)
         {
             return std::visit(overloaded {
@@ -40,33 +52,6 @@ namespace resol
             }, *formula);
         }
 
-        bool is_tautological(const clause &cl)
-        {
-            for (std::size_t i = 0; i < cl.size(); i++)
-            {
-                for (std::size_t j = i + 1; j < cl.size(); j++)
-                {
-                    if (cl[i].negated == cl[j].negated)
-                        continue;
-                    if (cl[i].name != cl[j].name || cl[i].args.size() != cl[j].args.size())
-                        continue;
-
-                    bool match = true;
-                    for (const auto &[lhs, rhs] : std::views::zip(cl[i].args, cl[j].args))
-                    {
-                        if (!equal(lhs, rhs))
-                        {
-                            match = false;
-                            break;
-                        }
-                    }
-                    if (match)
-                        return true;
-                }
-            }
-            return false;
-        }
-
         void collect_conj(formula::ptr formula, clause_set &out)
         {
             std::visit(overloaded {
@@ -82,15 +67,26 @@ namespace resol
                     bool tautology = false;
                     if (!collect_disj(formula, cl, tautology))
                         return;
-                    if (tautology)
-                        return;
-                    if (is_tautological(cl))
+                    if (tautology || is_tautology(cl))
                         return;
                     out.push_back(std::move(cl));
                 }
             }, *formula);
         }
     } // namespace
+
+    bool is_tautology(const clause &cl)
+    {
+        for (std::size_t i = 0; i < cl.size(); i++)
+        {
+            for (std::size_t j = i + 1; j < cl.size(); j++)
+            {
+                if (cl[i].negated != cl[j].negated && same_atom(cl[i], cl[j]))
+                    return true;
+            }
+        }
+        return false;
+    }
 
     clause_set extract_clauses(formula::ptr formula)
     {
@@ -101,53 +97,6 @@ namespace resol
 
     bool equal(const literal &lhs, const literal &rhs)
     {
-        if (lhs.negated != rhs.negated)
-            return false;
-        if (lhs.name != rhs.name || lhs.args.size() != rhs.args.size())
-            return false;
-
-        for (const auto &[left, right] : std::views::zip(lhs.args, rhs.args))
-        {
-            if (!equal(left, right))
-                return false;
-        }
-        return true;
-    }
-
-    std::string to_string(const literal &lit, print_style style)
-    {
-        std::string out;
-        if (lit.negated)
-            out += (style == print_style::ascii ? "~" : "¬");
-
-        out += lit.name;
-        if (!lit.args.empty())
-        {
-            out += '(';
-            for (std::size_t i = 0; i < lit.args.size(); i++)
-            {
-                if (i != 0)
-                    out += ", ";
-                out += to_string(lit.args[i]);
-            }
-            out += ')';
-        }
-        return out;
-    }
-
-    std::string to_string(const clause &cl, print_style style)
-    {
-        if (cl.empty())
-            return style == print_style::ascii ? "false" : "⊥";
-
-        const auto sep = (style == print_style::ascii ? " | " : " ∨ ");
-        std::string out;
-        for (std::size_t i = 0; i < cl.size(); i++)
-        {
-            if (i != 0)
-                out += sep;
-            out += to_string(cl[i], style);
-        }
-        return out;
+        return lhs.negated == rhs.negated && same_atom(lhs, rhs);
     }
 } // namespace resol
