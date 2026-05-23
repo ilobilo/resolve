@@ -43,11 +43,11 @@ In order of precedence:
 $ resolve nnf -e "¬(P → Q)"
 P ∧ ¬Q
 
-$ resolve cnf -e "(P ∧ Q) ∨ R"
+$ echo "(P ∧ Q) ∨ R" | resolve cnf
 (P ∨ R) ∧ (Q ∨ R)
 
-$ resolve dnf -e "(P ∨ Q) ∧ R"
-(P ∧ R) ∨ (Q ∧ R)
+$ echo "(P ∨ Q) ∧ R" > tmp.txt && resolve dnf tmp.txt && rm tmp.txt
+P ∧ R ∨ Q ∧ R
 
 $ resolve nnf -a -e "¬forall x. P(x)"
 exists x. ~P(x)

@@ -46,7 +46,13 @@ target("resolve")
         local mingw_cxx_inc = "/usr/x86_64-w64-mingw32/sys-root/mingw/include/c++/bits"
         add_files(mingw_cxx_inc .. "/std.cc", mingw_cxx_inc .. "/std.compat.cc")
         add_syslinks("stdc++exp")
-        add_ldflags("-static-libgcc", "-static-libstdc++", "-static", { force = true })
+        add_ldflags(
+            "-static-libgcc",
+            "-static-libstdc++",
+            "-static",
+            "-Wl,--allow-multiple-definition",
+            { force = true }
+        )
     end
 
     set_rundir("$(projectdir)")
