@@ -145,6 +145,52 @@ namespace
 
     int run_unify(const options &opts)
     {
+        resol::parser p1 { opts.inputs[0].text };
+        resol::parser p2 { opts.inputs[1].text };
+
+        auto lhs = p1.parse_formula();
+        auto rhs = p2.parse_formula();
+
+        const auto check = [](auto formula) {
+            if (formula)
+                return true;
+            std::println(
+                std::cerr, "error: {} at {}",
+                formula.error().message, formula.error().pos
+            );
+            return false;
+        };
+        if (!check(lhs) || !check(rhs))
+            return 1;
+
+        const auto strip = [](resol::formula::ptr formula)
+        {
+            while (true)
+            {
+                if (const auto fa = std::get_if<resol::formula::forall_t>(formula.get()))
+                    formula = fa->body;
+                else if (const auto ex = std::get_if<resol::formula::exists_t>(formula.get()))
+                    formula = ex->body;
+                else
+                    break;
+            }
+            return formula;
+        };
+
+        auto sub = resol::unify(strip(*lhs), strip(*rhs));
+        if (!sub)
+        {
+            std::println(std::cerr, "error: {}", sub.error().message);
+            return 1;
+        }
+
+        std::vector<std::pair<std::string, resol::term::ptr>> sorted { sub->begin(), sub->end() };
+        std::ranges::sort(sorted, [](const auto &lhs, const auto &rhs) {
+            return lhs.first < rhs.first;
+        });
+
+        for (const auto &[var, term] : sorted)
+            std::println("{} -> {}", var, resol::to_string(term));
         return 0;
     }
 

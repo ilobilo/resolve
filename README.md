@@ -39,9 +39,13 @@ In order of precedence:
 
 ## Examples
 
+### Normal forms
 ```sh
 $ resolve nnf -e "¬(P → Q)"
 P ∧ ¬Q
+
+$ resolve nnf -e "P ↔ ¬Q"
+(¬P ∨ ¬Q) ∧ (Q ∨ P)
 
 $ echo "(P ∧ Q) ∨ R" | resolve cnf
 (P ∨ R) ∧ (Q ∨ R)
@@ -51,4 +55,29 @@ P ∧ R ∨ Q ∧ R
 
 $ resolve nnf -a -e "¬forall x. P(x)"
 exists x. ~P(x)
+```
+
+### Unification
+`unify` takes two formulas and prints the most general unifier as `var -> term`.
+
+```sh
+$ resolve unify -e "∀x. P(x)" -e "P(a)"
+x -> a
+
+$ resolve unify -e "forall x. P(f(x))" -e "forall y. P(f(g(y)))"
+x -> g(y)
+
+$ resolve unify -e "∀x. P(f(x), x)" -e "∀y. P(y, a)"
+x -> a
+y -> f(a)
+
+$ resolve unify -e "∀x. ∀y. P(f(x), y)" -e "forall z. P(z, a)"
+y -> a
+z -> f(x)
+
+$ resolve unify -e "P(a)" -e "P(b)"
+error: incompatible terms
+
+$ resolve unify -e "∀x. P(x)" -e "∀x. P(f(x))"
+error: occurs check failed: x appears in its own binding
 ```

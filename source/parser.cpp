@@ -193,12 +193,10 @@ namespace resol
         const auto tok = _lex.peek();
         if (tok.type == type)
             return _lex.next();
-        return std::unexpected {
-            parse_error {
-                std::format("expected {}, got '{}'", magic_enum::enum_name(type), tok.text),
-                tok.pos
-            }
-        };
+        return std::unexpected { parse_error {
+            std::format("expected {}, got '{}'", magic_enum::enum_name(type), tok.text),
+            tok.pos
+        } };
     }
 
     bool parser::accept(token_type type)
@@ -222,12 +220,10 @@ namespace resol
 
         if (const auto tok = _lex.peek(); tok.type != token_type::end)
         {
-            return std::unexpected {
-                parse_error {
-                    std::format("unexpected token '{}' after formula", tok.text),
-                    tok.pos
-                }
-            };
+            return std::unexpected { parse_error {
+                std::format("unexpected token '{}' after formula", tok.text),
+                tok.pos
+            } };
         }
         return res;
     }
@@ -263,12 +259,10 @@ namespace resol
 
         if (const auto tok = _lex.peek(); tok.type != token_type::end)
         {
-            return std::unexpected {
-                parse_error {
-                    std::format("unexpected token '{}' after sequent", tok.text),
-                    tok.pos
-                }
-            };
+            return std::unexpected { parse_error {
+                std::format("unexpected token '{}' after sequent", tok.text),
+                tok.pos
+            } };
         }
         return seq;
     }
