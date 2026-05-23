@@ -122,4 +122,6 @@ export namespace resol
 
     formula::ptr to_dnf(formula::ptr formula);
     bool is_dnf(formula::ptr formula);
+
+    formula::ptr simplify(formula::ptr formula);
 } // export namespace resol

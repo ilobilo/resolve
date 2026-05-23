@@ -404,4 +404,144 @@ namespace resol
             },
         }, *formula);
     }
+
+    namespace
+    {
+        std::pair<formula::ptr, bool> is_negated(formula::ptr literal)
+        {
+            if (const auto neg = std::get_if<formula::not_t>(literal.get()))
+                return { neg->arg, true };
+            return { literal, false };
+        }
+
+        bool is_true(formula::ptr formula)
+        {
+            return std::holds_alternative<formula::true_t>(*formula);
+        }
+
+        bool is_false(formula::ptr formula)
+        {
+            return std::holds_alternative<formula::false_t>(*formula);
+        }
+
+        template<typename Op>
+        void flatten(formula::ptr formula, std::vector<formula::ptr> &out)
+        {
+            if (const auto op = std::get_if<Op>(formula.get()))
+            {
+                flatten<Op>(op->lhs, out);
+                flatten<Op>(op->rhs, out);
+            }
+            else out.push_back(std::move(formula));
+        }
+
+        template<typename Make>
+        formula::ptr fold(std::vector<formula::ptr> parts, Make make, formula::ptr ident)
+        {
+            if (parts.empty())
+                return ident;
+
+            formula::ptr acc = std::move(parts.back());
+            for (std::size_t i = parts.size() - 1; i-- > 0; )
+                acc = make(std::move(parts[i]), std::move(acc));
+            return acc;
+        }
+
+        formula::ptr simplify_or(std::vector<formula::ptr> parts)
+        {
+            std::vector<formula::ptr> kept;
+            for (auto &part : parts)
+            {
+                // A or F = A
+                if (is_false(part))
+                    continue;
+                // A or T = T
+                if (is_true(part))
+                    return make_true();
+
+                if (std::ranges::any_of(kept, [&](const auto &val) { return equal(part, val); }))
+                    continue;
+
+                const auto [ppos, pneg] = is_negated(part);
+                if (std::ranges::any_of(kept, [&](const auto &val) {
+                        const auto [pos, neg] = is_negated(val);
+                        return pneg != neg && equal(ppos, pos);
+                    }))
+                    return make_true();
+
+                kept.push_back(std::move(part));
+            }
+
+            return fold(std::move(kept),
+                [](auto lhs, auto rhs) {
+                    return make_or(lhs, rhs);
+                }, make_false()
+            );
+        }
+
+        formula::ptr simplify_and(std::vector<formula::ptr> parts)
+        {
+            std::vector<formula::ptr> kept;
+            for (auto &part : parts)
+            {
+                // A and T = A
+                if (is_true(part))
+                    continue;
+                // A and F = F
+                if (is_false(part))
+                    return make_false();
+
+                if (std::ranges::any_of(kept, [&](const auto &val) { return equal(part, val); }))
+                    continue;
+
+                const auto [ppos, pneg] = is_negated(part);
+                if (std::ranges::any_of(kept, [&](const auto &val) {
+                        const auto [pos, neg] = is_negated(val);
+                        return pneg != neg && equal(ppos, pos);
+                    }))
+                    return make_false();
+
+                kept.push_back(std::move(part));
+            }
+
+            return fold(std::move(kept),
+                [](auto lhs, auto rhs) {
+                    return make_and(lhs, rhs);
+                }, make_true()
+            );
+        }
+    } // namespace
+
+    formula::ptr simplify(formula::ptr formula)
+    {
+        if (!is_nnf(formula))
+            formula = to_nnf(formula);
+
+        return std::visit(overloaded {
+            [](const formula::and_t &val) {
+                std::vector<formula::ptr> parts;
+                flatten<formula::and_t>(make_and(val.lhs, val.rhs), parts);
+                for (auto &part : parts)
+                    part = simplify(part);
+                return simplify_and(std::move(parts));
+            },
+            [](const formula::or_t &val) {
+                std::vector<formula::ptr> parts;
+                flatten<formula::or_t>(make_or(val.lhs, val.rhs), parts);
+                for (auto &part : parts)
+                    part = simplify(part);
+                return simplify_or(std::move(parts));
+            },
+            [](const formula::forall_t &val) {
+                return make_forall(val.var, simplify(val.body));
+            },
+            [](const formula::exists_t &val) {
+                return make_exists(val.var, simplify(val.body));
+            },
+            // predicate, ~predicate, T, F
+            [&](const auto &) {
+                return formula;
+            }
+        }, *formula);
+    }
 } // namespace resol

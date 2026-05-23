@@ -9,7 +9,7 @@ import std;
 namespace
 {
     constexpr std::string_view version_string = "v0.1";
-    enum class subcommand { prove, nnf, cnf, dnf, unify };
+    enum class subcommand { prove, simplify, nnf, cnf, dnf, unify };
 
     struct input_source
     {
@@ -56,6 +56,8 @@ namespace
         {
             case prove:
                 return "Resolution refutation.";
+            case simplify:
+                return "Simplify formula.";
             case nnf:
                 return "Convert formula to Negation Normal Form.";
             case cnf:
@@ -112,6 +114,27 @@ namespace
         return 0;
     }
 
+    int run_simplify(const options &opts)
+    {
+        resol::parser parser { opts.inputs[0].text };
+        auto formula = parser.parse_formula();
+        if (!formula)
+        {
+            std::println(
+                std::cerr, "error: {} at {}",
+                formula.error().message, formula.error().pos
+            );
+            return 1;
+        }
+
+        formula = resol::simplify(*formula);
+        const auto style = opts.ascii
+            ? resol::print_style::ascii
+            : resol::print_style::unicode;
+        std::println("{}", to_string(*formula, style));
+        return 0;
+    }
+
     int run_transform(const options &opts, subcommand cmd)
     {
         resol::parser parser { opts.inputs[0].text };
@@ -127,10 +150,12 @@ namespace
 
         formula = resol::to_nnf(*formula);
         if (cmd == subcommand::cnf)
-            formula = resol::to_cnf(*formula);
+            formula = resol::simplify(resol::to_cnf(*formula));
         else if (cmd == subcommand::dnf)
-            formula = resol::to_dnf(*formula);
-        else if (cmd != subcommand::nnf)
+            formula = resol::simplify(resol::to_dnf(*formula));
+        else if (cmd == subcommand::nnf)
+            formula = resol::simplify(*formula);
+        else
         {
             std::println(std::cerr, "error: invalid subcommand");
             return 1;
@@ -201,6 +226,8 @@ namespace
         {
             case prove:
                 return run_prove(opts);
+            case simplify:
+                return run_simplify(opts);
             case nnf:
             case cnf:
             case dnf:
