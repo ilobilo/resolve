@@ -227,43 +227,4 @@ namespace resol
         }
         return res;
     }
-
-    parse_result<sequent> parser::parse_sequent()
-    {
-        sequent seq;
-        if (_lex.peek().type != token_type::turnstile)
-        {
-            auto first = parse_iff();
-            if (!first)
-                return std::unexpected { first.error() };
-
-            seq.formulas.push_back(std::move(*first));
-            while (accept(token_type::comma))
-            {
-                auto next = parse_iff();
-                if (!next)
-                    return std::unexpected { next.error() };
-                seq.formulas.push_back(std::move(*next));
-            }
-        }
-
-        const auto ts = expect(token_type::turnstile);
-        if (!ts)
-            return std::unexpected { ts.error() };
-
-        auto conc = parse_iff();
-        if (!conc)
-            return std::unexpected { conc.error() };
-
-        seq.result = std::move(*conc);
-
-        if (const auto tok = _lex.peek(); tok.type != token_type::end)
-        {
-            return std::unexpected { parse_error {
-                std::format("unexpected token '{}' after sequent", tok.text),
-                tok.pos
-            } };
-        }
-        return seq;
-    }
 } // namespace resol

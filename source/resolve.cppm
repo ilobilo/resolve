@@ -7,5 +7,6 @@ export import clause;
 export import format;
 export import lexer;
 export import parser;
+export import resolution;
 export import unify;
 export import util;

@@ -565,10 +565,10 @@ namespace resol
             }, *term);
         }
 
-        formula::ptr standardise_impl(formula::ptr formula, rename_map &sub, std::size_t &counter);
+        formula::ptr normalise_impl(formula::ptr formula, rename_map &sub, std::size_t &counter);
 
         template<typename Make>
-        formula::ptr standardise_quant(
+        formula::ptr normalise_quant(
             const std::string &var, formula::ptr body,
             rename_map &sub, std::size_t &counter, Make make
         )
@@ -579,7 +579,7 @@ namespace resol
                 saved = it->second;
 
             sub[var] = fresh;
-            auto new_body = standardise_impl(body, sub, counter);
+            auto new_body = normalise_impl(body, sub, counter);
             if (saved)
                 sub[var] = *saved;
             else
@@ -588,7 +588,7 @@ namespace resol
             return make(std::move(fresh), std::move(new_body));
         }
 
-        formula::ptr standardise_impl(formula::ptr formula, rename_map &sub, std::size_t &counter)
+        formula::ptr normalise_impl(formula::ptr formula, rename_map &sub, std::size_t &counter)
         {
             return std::visit(overloaded {
                 [&](const formula::predicate_t &val) {
@@ -599,37 +599,37 @@ namespace resol
                     return make_pred(val.name, std::move(args));
                 },
                 [&](const formula::not_t &val) {
-                    return make_not(standardise_impl(val.arg, sub, counter));
+                    return make_not(normalise_impl(val.arg, sub, counter));
                 },
                 [&](const formula::and_t &val) {
-                    auto lhs = standardise_impl(val.lhs, sub, counter);
-                    auto rhs = standardise_impl(val.rhs, sub, counter);
+                    auto lhs = normalise_impl(val.lhs, sub, counter);
+                    auto rhs = normalise_impl(val.rhs, sub, counter);
                     return make_and(std::move(lhs), std::move(rhs));
                 },
                 [&](const formula::or_t &val) {
-                    auto lhs = standardise_impl(val.lhs, sub, counter);
-                    auto rhs = standardise_impl(val.rhs, sub, counter);
+                    auto lhs = normalise_impl(val.lhs, sub, counter);
+                    auto rhs = normalise_impl(val.rhs, sub, counter);
                     return make_or(std::move(lhs), std::move(rhs));
                 },
                 [&](const formula::implies_t &val) {
-                    auto lhs = standardise_impl(val.lhs, sub, counter);
-                    auto rhs = standardise_impl(val.rhs, sub, counter);
+                    auto lhs = normalise_impl(val.lhs, sub, counter);
+                    auto rhs = normalise_impl(val.rhs, sub, counter);
                     return make_implies(std::move(lhs), std::move(rhs));
                 },
                 [&](const formula::iff_t &val) {
-                    auto lhs = standardise_impl(val.lhs, sub, counter);
-                    auto rhs = standardise_impl(val.rhs, sub, counter);
+                    auto lhs = normalise_impl(val.lhs, sub, counter);
+                    auto rhs = normalise_impl(val.rhs, sub, counter);
                     return make_iff(std::move(lhs), std::move(rhs));
                 },
                 [&](const formula::forall_t &val) {
-                    return standardise_quant(val.var, val.body, sub, counter,
+                    return normalise_quant(val.var, val.body, sub, counter,
                         [](std::string var, formula::ptr fptr) {
                             return make_forall(std::move(var), std::move(fptr));
                         }
                     );
                 },
                 [&](const formula::exists_t &val) {
-                    return standardise_quant(val.var, val.body, sub, counter,
+                    return normalise_quant(val.var, val.body, sub, counter,
                         [](std::string var, formula::ptr fptr) {
                             return make_exists(std::move(var), std::move(fptr));
                         }
@@ -646,11 +646,11 @@ namespace resol
     } // namespace
 
     // makes every bound variable unique
-    formula::ptr standardise_apart(formula::ptr formula)
+    formula::ptr normalise_apart(formula::ptr formula)
     {
         rename_map sub;
         std::size_t counter = 0;
-        return standardise_impl(std::move(formula), sub, counter);
+        return normalise_impl(std::move(formula), sub, counter);
     }
 
     namespace
@@ -758,7 +758,7 @@ namespace resol
         }
     } // namespace
 
-    // assumes nnf and standardised apart
+    // assumes nnf and normalised
     formula::ptr skolemise(formula::ptr formula)
     {
         std::vector<std::string> universals;

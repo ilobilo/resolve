@@ -33,7 +33,6 @@ In order of precedence:
 | exists     | `∃`     | `exists` |
 | true       | `⊤`     | `true` |
 | false      | `⊥`     | `false` |
-| sequent    | `⊢`     | `\|-` |
 
 `∀x. P(x) → Q(x)` means `∀x. (P(x) → Q(x))`.
 
@@ -67,7 +66,7 @@ exists x. ~P(x)
 ```
 
 ### skolemise
-`skolemise` standardises every bound variable (renames `x` to `x_N`) and replaces each existentially quantified variable (`∃x.`) with a Skolem term.
+`skolemise` normalises every bound variable (renames `x` to `x_N`) and replaces each existentially quantified variable (`∃x.`) with a Skolem term.
 
 ```sh
 $ resolve skolemise -e "∀x. ∃y. P(x, y)"
@@ -84,7 +83,32 @@ $ resolve skolemise -e "P → ∃y. Q(y)"
 ```
 
 ### prove
-`prove --clauses` applies following pipeline to formula: nnf -> standardise (explained above) -> skolemise (same) -> drop ∀ (forall) → cnf, and prints one clause per line.
+`prove` runs resolution with factoring on the extracted clause set. output is `unsatisfiable`, `satisfiable` or `limit reached`.
+
+```sh
+$ resolve prove -e "(P → Q) ∧ P ∧ ¬Q"
+unsatisfiable
+
+$ resolve prove -e "(∀x. P(x) → Q(x)) ∧ P(a) ∧ ¬Q(a)"
+unsatisfiable
+
+$ resolve prove -e "P ∨ ¬P"
+satisfiable
+```
+
+`-t/--trace` prints each clause with its parents and unifier.
+
+```sh
+$ resolve prove -t -e "(∀x. P(x) → Q(x)) ∧ P(a) ∧ ¬Q(a)"
+[1] ¬P(x_0) ∨ Q(x_0)
+[2] P(a)
+[3] ¬Q(a)
+[4] ¬P(a) (from 3, 1; x_0 -> a)
+[5] ⊥ (from 4, 2)
+unsatisfiable
+```
+
+`prove --clauses` applies following to formula: nnf -> normalise (explained above) -> skolemise (same) -> drop ∀ (forall) → cnf, and prints one clause per line.
 
 ```sh
 $ resolve prove --clauses -e "∀x. P(x) → Q(x)"

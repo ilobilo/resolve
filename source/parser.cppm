@@ -17,12 +17,6 @@ export namespace resol
     template<typename Type>
     using parse_result = std::expected<Type, parse_error>;
 
-    struct sequent
-    {
-        std::vector<formula::ptr> formulas;
-        formula::ptr result;
-    };
-
     class parser
     {
         private:
@@ -48,6 +42,5 @@ export namespace resol
             : _lex { src } { }
 
         parse_result<formula::ptr> parse_formula();
-        parse_result<sequent> parse_sequent();
     };
 } // export namespace resol

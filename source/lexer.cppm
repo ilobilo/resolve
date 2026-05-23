@@ -24,7 +24,6 @@ namespace resol
         rparen,
         comma,
         dot,
-        turnstile,
 
         ident,
 
@@ -43,7 +42,6 @@ namespace resol
         { "∃", token_type::kw_exists },
         { "⊤", token_type::kw_true },
         { "⊥", token_type::kw_false },
-        { "⊢", token_type::turnstile },
 
         { "->", token_type::op_implies },
         { "=>", token_type::op_implies },
@@ -51,7 +49,6 @@ namespace resol
         { "||", token_type::op_or },
         { "/\\", token_type::op_and },
         { "\\/", token_type::op_or },
-        { "|-", token_type::turnstile },
         { "¬", token_type::op_not },
 
         { "!", token_type::op_not },

@@ -131,6 +131,92 @@ namespace
         return opts.ascii ? resol::print_style::ascii : resol::print_style::unicode;
     }
 
+    std::string strip_rename(std::string_view name)
+    {
+        const auto pos = name.find('#');
+        return std::string { pos == std::string_view::npos ? name : name.substr(0, pos) };
+    }
+
+    resol::term::ptr strip_term(resol::term::ptr term)
+    {
+        return std::visit(resol::overloaded {
+            [](const resol::term::variable_t &val) {
+                return resol::make_var(strip_rename(val.name));
+            },
+            [&](const resol::term::constant_t &) {
+                return term;
+            },
+            [](const resol::term::function_t &val) {
+                std::vector<resol::term::ptr> args;
+                args.reserve(val.args.size());
+                for (const auto &arg : val.args)
+                    args.push_back(strip_term(arg));
+                return resol::make_func(val.name, std::move(args));
+            }
+        }, *term);
+    }
+
+    resol::clause strip_clause(const resol::clause &cl)
+    {
+        resol::clause out;
+        out.reserve(cl.size());
+        for (const auto &lit : cl)
+        {
+            std::vector<resol::term::ptr> args;
+            args.reserve(lit.args.size());
+            for (const auto &arg : lit.args)
+                args.push_back(strip_term(arg));
+            out.push_back({ lit.negated, lit.name, std::move(args) });
+        }
+        return out;
+    }
+
+    void print_trace(const resol::prove_result &result, resol::print_style style)
+    {
+        for (std::size_t i = 0; i < result.steps.size(); i++)
+        {
+            const auto &step = result.steps[i];
+            const auto repr = to_string(strip_clause(step.result), style);
+            if (step.parents.empty())
+            {
+                std::println("[{}] {}", i + 1, repr);
+                continue;
+            }
+
+            std::string parents;
+            for (std::size_t k = 0; k < step.parents.size(); k++)
+            {
+                if (k != 0)
+                    parents += ", ";
+                parents += std::to_string(step.parents[k] + 1);
+            }
+
+            std::string mgu_str;
+            if (!step.mgu.empty())
+            {
+                std::vector<std::pair<std::string, resol::term::ptr>> sorted {
+                    step.mgu.begin(), step.mgu.end()
+                };
+                std::ranges::sort(sorted, [](const auto &a, const auto &b) {
+                    return a.first < b.first;
+                });
+                mgu_str = "; ";
+                for (std::size_t k = 0; k < sorted.size(); k++)
+                {
+                    if (k != 0)
+                        mgu_str += ", ";
+                    mgu_str += std::format(
+                        "{} -> {}",
+                        strip_rename(sorted[k].first),
+                        to_string(strip_term(sorted[k].second))
+                    );
+                }
+            }
+
+            std::println("[{}] {} (from {}{})", i + 1, repr, parents, mgu_str);
+        }
+    }
+
     int run_prove(const options &opts)
     {
         auto formula = parse_one(opts.inputs[0]);
@@ -141,7 +227,7 @@ namespace
             resol::to_cnf(
                 resol::drop_universals(
                     resol::skolemise(
-                        resol::standardise_apart(
+                        resol::normalise_apart(
                             resol::to_nnf(*formula)
                         )
                     )
@@ -149,15 +235,32 @@ namespace
             )
         );
 
+        const auto style = style_for(opts);
+
         if (opts.dump_clauses)
         {
-            for (const auto &clause : clauses)
-                std::println("{}", to_string(clause, style_for(opts)));
+            for (const auto &cl : clauses)
+                std::println("{}", to_string(cl, style));
             return 0;
         }
 
-        std::println(std::cerr, "error: resolution not implemented yet");
-        return 1;
+        auto result = resol::run_resolution(std::move(clauses), opts.limit);
+        if (opts.trace)
+            print_trace(result, style);
+
+        switch (result.status)
+        {
+            case resol::prove_status::unsatisfiable:
+                std::println("unsatisfiable");
+                return 0;
+            case resol::prove_status::satisfiable:
+                std::println("satisfiable");
+                return 1;
+            case resol::prove_status::limit_reached:
+                std::println("limit reached");
+                return 1;
+        }
+        std::unreachable();
     }
 
     int run_simplify(const options &opts)
@@ -189,7 +292,7 @@ namespace
                 formula = resol::simplify(resol::to_dnf(formula));
                 break;
             case subcommand::skolemise:
-                formula = resol::skolemise(resol::standardise_apart(formula));
+                formula = resol::skolemise(resol::normalise_apart(formula));
                 break;
             default:
                 std::println(std::cerr, "error: invalid subcommand");
@@ -303,7 +406,7 @@ int main(int argc, char **argv)
                 .scan<'i', std::size_t>()
                 .default_value<std::size_t>(10000)
                 .metavar("N")
-                .help("max resolution iterations (default 10000)");
+                .help("max resolution iterations");
         }
 
         program.add_subparser(*parser);
@@ -315,10 +418,10 @@ int main(int argc, char **argv)
     for (int i = 0; i < argc; i++)
         args.emplace_back(argv[i]);
 
-    const bool is_global_flag = args.size() > 1
-        && (args[1] == "-h" || args[1] == "--help" || args[1] == "--version");
-    const bool has_subcommand = args.size() > 1
-        && magic_enum::enum_cast<subcommand>(args[1]).has_value();
+    const bool is_global_flag = args.size() > 1 &&
+        (args[1] == "-h" || args[1] == "--help" || args[1] == "--version");
+    const bool has_subcommand = args.size() > 1 &&
+        magic_enum::enum_cast<subcommand>(args[1]).has_value();
     if (!has_subcommand && !is_global_flag)
     {
         std::cout << program;
