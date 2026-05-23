@@ -23,13 +23,6 @@ set_warnings("all")
 set_optimize("fastest")
 
 set_languages("c++23")
-set_runtimes("c++_static")
-
-if is_plat("mingw") then
-    set_toolchains("mingw")
-else -- linux
-    set_toolchains("clang")
-end
 
 add_requires("magic_enum", "argparse")
 
@@ -41,18 +34,29 @@ target("resolve")
     add_files("source/**.cpp")
     add_files("source/**.cppm")
 
+    set_runtimes("stdc++_static")
+
     if is_plat("mingw") then
+        set_toolchains("mingw")
+
         -- TODO: a workaround for std module. works on fedora 44 with mingw64-gcc-c++ installed
         local mingw_cxx_inc = "/usr/x86_64-w64-mingw32/sys-root/mingw/include/c++/bits"
         add_files(mingw_cxx_inc .. "/std.cc", mingw_cxx_inc .. "/std.compat.cc")
         add_syslinks("stdc++exp")
+
         add_ldflags(
-            "-static-libgcc",
-            "-static-libstdc++",
-            "-static",
             "-Wl,--allow-multiple-definition",
             { force = true }
         )
+    else -- linux
+        set_toolchains("clang")
     end
+
+    add_ldflags(
+        "-static-libgcc",
+        "-static-libstdc++",
+        "-static",
+        { force = true }
+    )
 
     set_rundir("$(projectdir)")
