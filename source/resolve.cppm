@@ -3,6 +3,7 @@
 export module resolve;
 
 export import ast;
+export import clause;
 export import format;
 export import lexer;
 export import parser;

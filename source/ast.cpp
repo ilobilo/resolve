@@ -2,6 +2,8 @@
 
 module ast;
 
+import unify;
+
 namespace resol
 {
     // produces negation normal form of formula
@@ -241,12 +243,10 @@ namespace resol
         }
     } // namespace
 
+    // assumes nnf
     // produces conjunctive normal form of formula
     formula::ptr to_cnf(formula::ptr formula)
     {
-        if (!is_nnf(formula))
-            formula = to_nnf(formula);
-
         return std::visit(overloaded {
             [](const formula::and_t &val) {
                 return make_and(to_cnf(val.lhs), to_cnf(val.rhs));
@@ -346,12 +346,10 @@ namespace resol
         }
     } // namespace
 
+    // assumes nnf
     // produces disjunctive normal form of formula
     formula::ptr to_dnf(formula::ptr formula)
     {
-        if (!is_nnf(formula))
-            formula = to_nnf(formula);
-
         return std::visit(overloaded {
             [](const formula::or_t &val) {
                 return make_or(to_dnf(val.lhs), to_dnf(val.rhs));
@@ -512,11 +510,9 @@ namespace resol
         }
     } // namespace
 
+    // assumes nnf
     formula::ptr simplify(formula::ptr formula)
     {
-        if (!is_nnf(formula))
-            formula = to_nnf(formula);
-
         return std::visit(overloaded {
             [](const formula::and_t &val) {
                 std::vector<formula::ptr> parts;
@@ -540,6 +536,263 @@ namespace resol
             },
             // predicate, ~predicate, T, F
             [&](const auto &) {
+                return formula;
+            }
+        }, *formula);
+    }
+
+    namespace
+    {
+        using rename_map = std::unordered_map<std::string, std::string>;
+        term::ptr rename_term(const rename_map &sub, term::ptr term)
+        {
+            return std::visit(overloaded {
+                [&](const term::variable_t &val) {
+                    if (const auto it = sub.find(val.name); it != sub.end())
+                        return make_var(it->second);
+                    return term;
+                },
+                [&](const term::constant_t &) {
+                    return term;
+                },
+                [&](const term::function_t &val) {
+                    std::vector<term::ptr> args;
+                    args.reserve(val.args.size());
+                    for (const auto &arg : val.args)
+                        args.push_back(rename_term(sub, arg));
+                    return make_func(val.name, std::move(args));
+                }
+            }, *term);
+        }
+
+        formula::ptr standardise_impl(formula::ptr formula, rename_map &sub, std::size_t &counter);
+
+        template<typename Make>
+        formula::ptr standardise_quant(
+            const std::string &var, formula::ptr body,
+            rename_map &sub, std::size_t &counter, Make make
+        )
+        {
+            auto fresh = std::format("{}_{}", var, counter++);
+            std::optional<std::string> saved;
+            if (const auto it = sub.find(var); it != sub.end())
+                saved = it->second;
+
+            sub[var] = fresh;
+            auto new_body = standardise_impl(body, sub, counter);
+            if (saved)
+                sub[var] = *saved;
+            else
+                sub.erase(var);
+
+            return make(std::move(fresh), std::move(new_body));
+        }
+
+        formula::ptr standardise_impl(formula::ptr formula, rename_map &sub, std::size_t &counter)
+        {
+            return std::visit(overloaded {
+                [&](const formula::predicate_t &val) {
+                    std::vector<term::ptr> args;
+                    args.reserve(val.args.size());
+                    for (const auto &arg : val.args)
+                        args.push_back(rename_term(sub, arg));
+                    return make_pred(val.name, std::move(args));
+                },
+                [&](const formula::not_t &val) {
+                    return make_not(standardise_impl(val.arg, sub, counter));
+                },
+                [&](const formula::and_t &val) {
+                    auto lhs = standardise_impl(val.lhs, sub, counter);
+                    auto rhs = standardise_impl(val.rhs, sub, counter);
+                    return make_and(std::move(lhs), std::move(rhs));
+                },
+                [&](const formula::or_t &val) {
+                    auto lhs = standardise_impl(val.lhs, sub, counter);
+                    auto rhs = standardise_impl(val.rhs, sub, counter);
+                    return make_or(std::move(lhs), std::move(rhs));
+                },
+                [&](const formula::implies_t &val) {
+                    auto lhs = standardise_impl(val.lhs, sub, counter);
+                    auto rhs = standardise_impl(val.rhs, sub, counter);
+                    return make_implies(std::move(lhs), std::move(rhs));
+                },
+                [&](const formula::iff_t &val) {
+                    auto lhs = standardise_impl(val.lhs, sub, counter);
+                    auto rhs = standardise_impl(val.rhs, sub, counter);
+                    return make_iff(std::move(lhs), std::move(rhs));
+                },
+                [&](const formula::forall_t &val) {
+                    return standardise_quant(val.var, val.body, sub, counter,
+                        [](std::string var, formula::ptr fptr) {
+                            return make_forall(std::move(var), std::move(fptr));
+                        }
+                    );
+                },
+                [&](const formula::exists_t &val) {
+                    return standardise_quant(val.var, val.body, sub, counter,
+                        [](std::string var, formula::ptr fptr) {
+                            return make_exists(std::move(var), std::move(fptr));
+                        }
+                    );
+                },
+                [](const formula::true_t &) {
+                    return make_true();
+                },
+                [](const formula::false_t &) {
+                    return make_false();
+                }
+            }, *formula);
+        }
+    } // namespace
+
+    // makes every bound variable unique
+    formula::ptr standardise_apart(formula::ptr formula)
+    {
+        rename_map sub;
+        std::size_t counter = 0;
+        return standardise_impl(std::move(formula), sub, counter);
+    }
+
+    namespace
+    {
+        using term_map = std::unordered_map<std::string, term::ptr>;
+
+        term::ptr subst_term(const term_map &sub, term::ptr term)
+        {
+            return std::visit(overloaded {
+                [&](const term::variable_t &val) -> term::ptr {
+                    if (const auto it = sub.find(val.name); it != sub.end())
+                        return it->second;
+                    return term;
+                },
+                [&](const term::constant_t &) {
+                    return term;
+                },
+                [&](const term::function_t &val) {
+                    std::vector<term::ptr> args;
+                    args.reserve(val.args.size());
+                    for (const auto &arg : val.args)
+                        args.push_back(subst_term(sub, arg));
+                    return make_func(val.name, std::move(args));
+                }
+            }, *term);
+        }
+
+        formula::ptr skolemise_impl(
+            formula::ptr formula,
+            std::vector<std::string> &universals,
+            term_map &sub,
+            std::size_t &counter
+        )
+        {
+            return std::visit(overloaded {
+                [&](const formula::predicate_t &val) {
+                    std::vector<term::ptr> args;
+                    args.reserve(val.args.size());
+                    for (const auto &arg : val.args)
+                        args.push_back(subst_term(sub, arg));
+                    return make_pred(val.name, std::move(args));
+                },
+                [&](const formula::not_t &val) {
+                    return make_not(skolemise_impl(val.arg, universals, sub, counter));
+                },
+                [&](const formula::and_t &val) {
+                    auto lhs = skolemise_impl(val.lhs, universals, sub, counter);
+                    auto rhs = skolemise_impl(val.rhs, universals, sub, counter);
+                    return make_and(std::move(lhs), std::move(rhs));
+                },
+                [&](const formula::or_t &val) {
+                    auto lhs = skolemise_impl(val.lhs, universals, sub, counter);
+                    auto rhs = skolemise_impl(val.rhs, universals, sub, counter);
+                    return make_or(std::move(lhs), std::move(rhs));
+                },
+                [&](const formula::implies_t &val) {
+                    auto lhs = skolemise_impl(val.lhs, universals, sub, counter);
+                    auto rhs = skolemise_impl(val.rhs, universals, sub, counter);
+                    return make_implies(std::move(lhs), std::move(rhs));
+                },
+                [&](const formula::iff_t &val) {
+                    auto lhs = skolemise_impl(val.lhs, universals, sub, counter);
+                    auto rhs = skolemise_impl(val.rhs, universals, sub, counter);
+                    return make_iff(std::move(lhs), std::move(rhs));
+                },
+                [&](const formula::forall_t &val) {
+                    universals.push_back(val.var);
+                    auto body = skolemise_impl(val.body, universals, sub, counter);
+                    universals.pop_back();
+                    return make_forall(val.var, std::move(body));
+                },
+                [&](const formula::exists_t &val) {
+                    const auto name = std::format("sk_{}", counter++);
+                    term::ptr skolem;
+                    if (!universals.empty())
+                    {
+                        std::vector<term::ptr> args;
+                        args.reserve(universals.size());
+                        for (const auto &u : universals)
+                            args.push_back(make_var(u));
+                        skolem = make_func(name, std::move(args));
+                    }
+                    else skolem = make_const(name);
+
+                    std::optional<term::ptr> saved;
+                    if (const auto it = sub.find(val.var); it != sub.end())
+                        saved = it->second;
+
+                    sub[val.var] = std::move(skolem);
+                    auto body = skolemise_impl(val.body, universals, sub, counter);
+                    if (saved)
+                        sub[val.var] = std::move(*saved);
+                    else
+                        sub.erase(val.var);
+
+                    return body;
+                },
+                [](const formula::true_t &) {
+                    return make_true();
+                },
+                [](const formula::false_t &) {
+                    return make_false();
+                }
+            }, *formula);
+        }
+    } // namespace
+
+    // assumes nnf and standardised apart
+    formula::ptr skolemise(formula::ptr formula)
+    {
+        std::vector<std::string> universals;
+        term_map sub;
+        std::size_t counter = 0;
+        return skolemise_impl(std::move(formula), universals, sub, counter);
+    }
+
+    // strips every universal quantifier
+    formula::ptr drop_universals(formula::ptr formula)
+    {
+        return std::visit(overloaded {
+            [](const formula::forall_t &val) {
+                return drop_universals(val.body);
+            },
+            [](const formula::exists_t &val) {
+                return make_exists(val.var, drop_universals(val.body));
+            },
+            [](const formula::not_t &val) {
+                return make_not(drop_universals(val.arg));
+            },
+            [](const formula::and_t &val) {
+                return make_and(drop_universals(val.lhs), drop_universals(val.rhs));
+            },
+            [](const formula::or_t &val) {
+                return make_or(drop_universals(val.lhs), drop_universals(val.rhs));
+            },
+            [](const formula::implies_t &val) {
+                return make_implies(drop_universals(val.lhs), drop_universals(val.rhs));
+            },
+            [](const formula::iff_t &val) {
+                return make_iff(drop_universals(val.lhs), drop_universals(val.rhs));
+            },
+            [&formula](const auto &) {
                 return formula;
             }
         }, *formula);

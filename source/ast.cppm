@@ -124,4 +124,8 @@ export namespace resol
     bool is_dnf(formula::ptr formula);
 
     formula::ptr simplify(formula::ptr formula);
+
+    formula::ptr standardise_apart(formula::ptr formula);
+    formula::ptr skolemise(formula::ptr formula);
+    formula::ptr drop_universals(formula::ptr formula);
 } // export namespace resol

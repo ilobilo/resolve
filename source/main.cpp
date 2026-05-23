@@ -9,7 +9,7 @@ import std;
 namespace
 {
     constexpr std::string_view version_string = "v0.1";
-    enum class subcommand { prove, simplify, nnf, cnf, dnf, unify };
+    enum class subcommand { prove, simplify, nnf, cnf, dnf, skolemise, unify };
 
     struct input_source
     {
@@ -64,6 +64,8 @@ namespace
                 return "Convert formula to Conjunctive Normal Form.";
             case dnf:
                 return "Convert formula to Disjunctive Normal Form.";
+            case skolemise:
+                return "Convert formula to Skolem Normal Form.";
             case unify:
                 return "Unify two formulas.";
         }
@@ -109,84 +111,103 @@ namespace
         return opts;
     }
 
-    int run_prove(const options &opts)
+    std::expected<resol::formula::ptr, int> parse_one(const input_source &src)
     {
-        return 0;
-    }
-
-    int run_simplify(const options &opts)
-    {
-        resol::parser parser { opts.inputs[0].text };
+        resol::parser parser { src.text };
         auto formula = parser.parse_formula();
         if (!formula)
         {
             std::println(
-                std::cerr, "error: {} at {}",
-                formula.error().message, formula.error().pos
+                std::cerr, "error: {} at {} ({})",
+                formula.error().message, formula.error().pos, src.origin
             );
-            return 1;
+            return std::unexpected { 1 };
+        }
+        return std::move(*formula);
+    }
+
+    resol::print_style style_for(const options &opts)
+    {
+        return opts.ascii ? resol::print_style::ascii : resol::print_style::unicode;
+    }
+
+    int run_prove(const options &opts)
+    {
+        auto formula = parse_one(opts.inputs[0]);
+        if (!formula)
+            return formula.error();
+
+        auto clauses = resol::extract_clauses(
+            resol::to_cnf(
+                resol::drop_universals(
+                    resol::skolemise(
+                        resol::standardise_apart(
+                            resol::to_nnf(*formula)
+                        )
+                    )
+                )
+            )
+        );
+
+        if (opts.dump_clauses)
+        {
+            for (const auto &clause : clauses)
+                std::println("{}", to_string(clause, style_for(opts)));
+            return 0;
         }
 
-        formula = resol::simplify(*formula);
-        const auto style = opts.ascii
-            ? resol::print_style::ascii
-            : resol::print_style::unicode;
-        std::println("{}", to_string(*formula, style));
+        std::println(std::cerr, "error: resolution not implemented yet");
+        return 1;
+    }
+
+    int run_simplify(const options &opts)
+    {
+        auto formula = parse_one(opts.inputs[0]);
+        if (!formula)
+            return formula.error();
+
+        std::println("{}", to_string(resol::simplify(*formula), style_for(opts)));
         return 0;
     }
 
     int run_transform(const options &opts, subcommand cmd)
     {
-        resol::parser parser { opts.inputs[0].text };
-        auto formula = parser.parse_formula();
-        if (!formula)
+        auto parsed = parse_one(opts.inputs[0]);
+        if (!parsed)
+            return parsed.error();
+
+        auto formula = resol::to_nnf(*parsed);
+        switch (cmd)
         {
-            std::println(
-                std::cerr, "error: {} at {}",
-                formula.error().message, formula.error().pos
-            );
-            return 1;
+            case subcommand::nnf:
+                formula = resol::simplify(formula);
+                break;
+            case subcommand::cnf:
+                formula = resol::simplify(resol::to_cnf(formula));
+                break;
+            case subcommand::dnf:
+                formula = resol::simplify(resol::to_dnf(formula));
+                break;
+            case subcommand::skolemise:
+                formula = resol::skolemise(resol::standardise_apart(formula));
+                break;
+            default:
+                std::println(std::cerr, "error: invalid subcommand");
+                return 1;
         }
 
-        formula = resol::to_nnf(*formula);
-        if (cmd == subcommand::cnf)
-            formula = resol::simplify(resol::to_cnf(*formula));
-        else if (cmd == subcommand::dnf)
-            formula = resol::simplify(resol::to_dnf(*formula));
-        else if (cmd == subcommand::nnf)
-            formula = resol::simplify(*formula);
-        else
-        {
-            std::println(std::cerr, "error: invalid subcommand");
-            return 1;
-        }
-
-        const auto style = opts.ascii
-            ? resol::print_style::ascii
-            : resol::print_style::unicode;
-        std::println("{}", to_string(*formula, style));
+        std::println("{}", to_string(formula, style_for(opts)));
         return 0;
     }
 
     int run_unify(const options &opts)
     {
-        resol::parser p1 { opts.inputs[0].text };
-        resol::parser p2 { opts.inputs[1].text };
-
-        auto lhs = p1.parse_formula();
-        auto rhs = p2.parse_formula();
-
-        const auto check = [](auto formula) {
-            if (formula)
-                return true;
-            std::println(
-                std::cerr, "error: {} at {}",
-                formula.error().message, formula.error().pos
-            );
-            return false;
-        };
-        if (!check(lhs) || !check(rhs))
-            return 1;
+        auto lhs = parse_one(opts.inputs[0]);
+        auto rhs = parse_one(opts.inputs[1]);
+        if (!lhs)
+            return lhs.error();
+        if (!rhs)
+            return rhs.error();
 
         const auto strip = [](resol::formula::ptr formula)
         {
@@ -231,6 +252,7 @@ namespace
             case nnf:
             case cnf:
             case dnf:
+            case skolemise:
                 return run_transform(opts, opts.cmd);
             case unify:
                 return run_unify(opts);

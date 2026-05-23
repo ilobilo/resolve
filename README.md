@@ -39,7 +39,16 @@ In order of precedence:
 
 ## Examples
 
-### Normal forms
+### simplify
+```sh
+$ resolve simplify -e "∀x. P(x) ∨ ¬P(x)"
+∀x. ⊤
+
+$ resolve simplify -e "(p ∨ ¬q ∨ (p ∨ ¬q)) ∧ (¬p ∧ q ∨ ¬p ∧ q)"
+(p ∨ ¬q) ∧ (¬p ∧ q)
+```
+
+### nnf, cnf, dnf
 ```sh
 $ resolve nnf -e "¬(P → Q)"
 P ∧ ¬Q
@@ -57,16 +66,39 @@ $ resolve nnf -a -e "¬forall x. P(x)"
 exists x. ~P(x)
 ```
 
-### Simplification
-```sh
-$ resolve simplify -e "∀x. P(x) ∨ ¬P(x)"
-∀x. ⊤
+### skolemise
+`skolemise` standardises every bound variable (renames `x` to `x_N`) and replaces each existentially quantified variable (`∃x.`) with a Skolem term.
 
-$ resolve simplify -e "(p ∨ ¬q ∨ (p ∨ ¬q)) ∧ (¬p ∧ q ∨ ¬p ∧ q)"
-(p ∨ ¬q) ∧ (¬p ∧ q)
+```sh
+$ resolve skolemise -e "∀x. ∃y. P(x, y)"
+∀x_0. P(x_0, sk_0(x_0))
+
+$ resolve skolemise -e "∃y. ∀x. P(x, y)"
+∀x_1. P(x_1, sk_0)
+
+$ resolve skolemise -e "(∀x. P(x)) ∧ (∀x. Q(x))"
+(∀x_0. P(x_0)) ∧ (∀x_1. Q(x_1))
+
+$ resolve skolemise -e "P → ∃y. Q(y)"
+¬P ∨ Q(sk_0)
 ```
 
-### Unification
+### prove
+`prove --clauses` applies following pipeline to formula: nnf -> standardise (explained above) -> skolemise (same) -> drop ∀ (forall) → cnf, and prints one clause per line.
+
+```sh
+$ resolve prove --clauses -e "∀x. P(x) → Q(x)"
+¬P(x_0) ∨ Q(x_0)
+
+$ resolve prove --clauses -e "P ↔ Q"
+¬P ∨ Q
+¬Q ∨ P
+
+# tautology
+$ resolve prove --clauses -e "P → P"
+```
+
+### unify
 `unify` takes two formulas and prints the most general unifier as `var -> term`.
 
 ```sh
